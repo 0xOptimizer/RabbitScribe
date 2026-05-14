@@ -55,6 +55,8 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("RabbitScribe")
         self.resize(1100, 720)
+        from rabbitscribe.widgets.about_dialog import app_icon
+        self.setWindowIcon(app_icon())
 
         self._project = Project(self)
         self._progress = ProgressStrip(self)
@@ -108,6 +110,11 @@ class MainWindow(QMainWindow):
         toggle_log.setText("Toggle &Log")
         view_menu.addAction(toggle_log)
 
+        help_menu = self.menuBar().addMenu("&Help")
+        about_action = QAction("&About RabbitScribe…", self)
+        about_action.triggered.connect(self.open_about_dialog)
+        help_menu.addAction(about_action)
+
     def _apply_stylesheet(self) -> None:
         qss_path = Path(__file__).resolve().parent / "resources" / "style.qss"
         if qss_path.is_file():
@@ -159,12 +166,16 @@ class MainWindow(QMainWindow):
         from rabbitscribe.widgets.setup_dialog import SetupDialog
         dlg = SetupDialog(self, first_run=first_run)
         dlg.exec()
+        if first_run and dlg.dont_ask_again():
+            settings.set_("setup/skip_first_run", True)
+
+    def open_about_dialog(self) -> None:
+        from rabbitscribe.widgets.about_dialog import AboutDialog
+        AboutDialog(self).exec()
 
     def _maybe_first_run_setup(self) -> None:
-        if settings.get("setup/first_run_done"):
+        if settings.get("setup/skip_first_run"):
             return
         if paths.find_whisper_cpp() is not None and paths.list_whisper_models():
-            settings.set_("setup/first_run_done", True)
             return
         self.open_setup_dialog(first_run=True)
-        settings.set_("setup/first_run_done", True)

@@ -25,6 +25,7 @@ Thumbs.db
 tools/whisper.cpp/
 tools/models/
 logs/
+output/
 rabbitscribe_output/
 
 .claude

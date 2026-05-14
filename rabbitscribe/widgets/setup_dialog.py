@@ -5,6 +5,7 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QDialog,
     QGroupBox,
@@ -88,6 +89,8 @@ class SetupDialog(QDialog):
         self._assets: list[dict] = []
         self._zip_target: Path | None = None
 
+        self._dont_ask_again_cb: QCheckBox | None = None
+
         layout = QVBoxLayout(self)
         if first_run:
             intro = QLabel(
@@ -101,7 +104,11 @@ class SetupDialog(QDialog):
             layout.addWidget(intro)
         layout.addWidget(self._build_binary_box())
         layout.addWidget(self._build_model_box())
+
         bottom = QHBoxLayout()
+        if first_run:
+            self._dont_ask_again_cb = QCheckBox("Don't show on startup again")
+            bottom.addWidget(self._dont_ask_again_cb)
         bottom.addStretch(1)
         close_btn = QPushButton("Close" if not first_run else "Skip for now")
         close_btn.clicked.connect(self.accept)
@@ -109,6 +116,9 @@ class SetupDialog(QDialog):
         layout.addLayout(bottom)
 
         self._refresh_statuses()
+
+    def dont_ask_again(self) -> bool:
+        return self._dont_ask_again_cb is not None and self._dont_ask_again_cb.isChecked()
 
     # ---------- binary section ----------
 

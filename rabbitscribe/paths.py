@@ -58,7 +58,13 @@ def list_whisper_models() -> list[Path]:
 
 
 def default_output_dir(source_mp4: Path) -> Path:
-    return source_mp4.parent / "rabbitscribe_output"
+    """Default output: <project_root>/output/<video_stem>/.
+
+    Putting it under the project keeps every run discoverable in one place
+    (and lets .gitignore cover them all). Sub-foldering by stem prevents
+    chunk-name collisions when processing multiple videos.
+    """
+    return _project_root() / "output" / source_mp4.stem
 
 
 def presets_dir() -> Path:
