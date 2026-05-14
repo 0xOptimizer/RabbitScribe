@@ -7,6 +7,7 @@ dependencies = [
     "PySide6>=6.6",
     "pysrt>=1.1.2",
     "openai-whisper>=20231117",
+    "gdown>=5.0",
 ]
 
 [project.optional-dependencies]

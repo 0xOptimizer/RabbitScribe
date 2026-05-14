@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
+    QInputDialog,
     QLabel,
     QLineEdit,
     QMessageBox,
@@ -23,6 +24,14 @@ from rabbitscribe.models.project import Project
 from rabbitscribe.widgets.progress_strip import ProgressStrip
 from rabbitscribe.workers import ffprobe
 from rabbitscribe.workers.mp3_extract import Mp3Extractor
+from rabbitscribe.workers.setup_downloader import FileDownloader
+from rabbitscribe.workers.url_downloader import (
+    GoogleDriveDownloader,
+    default_download_dir,
+    filename_from_url,
+    is_google_drive_url,
+    is_http_url,
+)
 
 
 log = logging.getLogger(__name__)
@@ -47,10 +56,14 @@ class SourcePanel(QWidget):
         self._mp4_edit.setReadOnly(True)
         self._mp4_browse = QPushButton("Browse…")
         self._mp4_browse.clicked.connect(self._on_browse_mp4)
+        self._mp4_url = QPushButton("Download from URL…")
+        self._mp4_url.setToolTip("Google Drive share link or direct .mp4 URL")
+        self._mp4_url.clicked.connect(self._on_download_url)
 
         mp4_row = QHBoxLayout()
         mp4_row.addWidget(self._mp4_edit, 1)
         mp4_row.addWidget(self._mp4_browse)
+        mp4_row.addWidget(self._mp4_url)
 
         self._duration_label = QLabel("-")
         self._video_codec_label = QLabel("-")
@@ -109,6 +122,78 @@ class SourcePanel(QWidget):
                 event.acceptProposedAction()
                 return
         event.ignore()
+
+    def _on_download_url(self) -> None:
+        last_url = settings.get("source/last_url", "")
+        url, ok = QInputDialog.getText(
+            self,
+            "Download video from URL",
+            "Paste a Google Drive share link or a direct .mp4 URL:",
+            QLineEdit.EchoMode.Normal,
+            str(last_url) if last_url else "",
+        )
+        url = url.strip()
+        if not ok or not url:
+            return
+        if not is_http_url(url):
+            QMessageBox.warning(self, "Bad URL", "Expected an http(s) URL.")
+            return
+        settings.set_("source/last_url", url)
+
+        dest_dir = default_download_dir()
+        dest_dir.mkdir(parents=True, exist_ok=True)
+
+        if is_google_drive_url(url):
+            dest = dest_dir / filename_from_url(url, fallback_stem="drive_video")
+            worker = GoogleDriveDownloader(self)
+        else:
+            dest = dest_dir / filename_from_url(url, fallback_stem="video")
+            worker = FileDownloader(url, dest, self)
+
+        worker.progress.connect(self._progress.set_progress)
+        worker.log.connect(lambda line: log.info("download: %s", line))
+        worker.finished.connect(self._on_download_finished)
+        worker.error.connect(self._on_download_error)
+        self._url_worker = worker
+
+        self._mp4_url.setEnabled(False)
+        self._mp4_browse.setEnabled(False)
+        self._progress.set_status(f"Downloading {dest.name}…")
+        self._progress.set_progress(0.0)
+        self._progress.set_busy(True)
+        self._progress.cancel_requested.connect(worker.cancel)
+        log.info("Starting URL download: %s -> %s", url, dest)
+
+        if isinstance(worker, GoogleDriveDownloader):
+            worker.start(url, dest)
+        else:
+            worker.start()
+
+    def _on_download_finished(self, path: str) -> None:
+        self._progress.set_busy(False)
+        self._mp4_url.setEnabled(True)
+        self._mp4_browse.setEnabled(True)
+        downloaded = Path(path)
+        if not downloaded.is_file():
+            for candidate in default_download_dir().iterdir():
+                if candidate.is_file() and candidate.stat().st_size > 0:
+                    downloaded = candidate
+                    break
+        if not downloaded.is_file():
+            QMessageBox.warning(self, "Download finished but file missing", path)
+            return
+        self._progress.set_status(f"Downloaded: {downloaded.name}")
+        self._load_mp4(downloaded)
+        log.info("URL download complete: %s", downloaded)
+
+    def _on_download_error(self, message: str) -> None:
+        self._progress.set_busy(False)
+        self._mp4_url.setEnabled(True)
+        self._mp4_browse.setEnabled(True)
+        self._progress.set_status(f"Download failed: {message}")
+        if message != "Cancelled":
+            QMessageBox.warning(self, "Download failed", message)
+        log.error("URL download failed: %s", message)
 
     def _on_browse_mp4(self) -> None:
         last = settings.get("source/last_mp4")
