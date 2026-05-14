@@ -81,7 +81,9 @@ class GoogleDriveDownloader(QProcessWorker):
             )
             return
         dest.parent.mkdir(parents=True, exist_ok=True)
-        args = [url, "-O", str(dest), "--fuzzy"]
+        # gdown 5+ parses Drive URL variants by default; older `--fuzzy`
+        # flag was removed.
+        args = [url, "-O", str(dest)]
         self._start(str(cli), args, output_path=dest)
 
     def _parse_progress(self, line: str) -> float | None:

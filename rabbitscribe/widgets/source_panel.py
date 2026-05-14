@@ -81,6 +81,8 @@ class SourcePanel(QWidget):
         info_box.setLayout(info_form)
 
         self._out_edit = QLineEdit()
+        self._out_edit.setText(str(paths.default_output_root()))
+        self._out_edit.setPlaceholderText(str(paths.default_output_root()))
         self._out_browse = QPushButton("Browse…")
         self._out_browse.clicked.connect(self._on_browse_out)
         out_row = QHBoxLayout()

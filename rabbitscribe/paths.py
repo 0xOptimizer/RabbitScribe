@@ -57,14 +57,18 @@ def list_whisper_models() -> list[Path]:
     return sorted(models_dir.glob("ggml-*.bin"))
 
 
-def default_output_dir(source_mp4: Path) -> Path:
-    """Default output: <project_root>/output/<video_stem>/.
+def default_output_root() -> Path:
+    """Where every video's outputs live: <project_root>/output/."""
+    return _project_root() / "output"
 
-    Putting it under the project keeps every run discoverable in one place
-    (and lets .gitignore cover them all). Sub-foldering by stem prevents
-    chunk-name collisions when processing multiple videos.
+
+def default_output_dir(source_mp4: Path) -> Path:
+    """Default output for a specific video: <project_root>/output/<video_stem>/.
+
+    Sub-foldering by stem prevents chunk-name collisions when processing
+    multiple videos.
     """
-    return _project_root() / "output" / source_mp4.stem
+    return default_output_root() / source_mp4.stem
 
 
 def presets_dir() -> Path:
