@@ -22,6 +22,7 @@ from rabbitscribe import paths, settings
 from rabbitscribe.models.project import Project
 from rabbitscribe.widgets.progress_strip import ProgressStrip
 from rabbitscribe.workers import ffprobe
+from rabbitscribe.workers.srt_stream import format_srt_timestamp, read_resume_state
 from rabbitscribe.workers.transcribe import PythonWhisperWorker, WhisperCppWorker
 
 
@@ -248,8 +249,12 @@ class TranscribePanel(QWidget):
         if model_data:
             settings.set_("transcribe/model", str(model_data))
 
+        start_offset_s, start_index = self._resolve_resume(audio, output_srt)
+        if start_offset_s is None:  # user cancelled the resume prompt
+            return
+
         if engine == ENGINE_WHISPER_CPP:
-            if paths.find_whisper_cpp() is None:
+            if paths.find_whisper_cpp() is None and not self._binary_combo.currentData():
                 self._prompt_missing_binary()
                 return
             if not model_data:
@@ -258,7 +263,7 @@ class TranscribePanel(QWidget):
                     "Place ggml-*.bin in tools/models/. Recommended: ggml-large-v3.bin.",
                 )
                 return
-            self._start_whisper_cpp(audio, Path(model_data), language, output_srt)
+            self._start_whisper_cpp(audio, Path(model_data), language, output_srt, start_offset_s, start_index)
         else:
             if not model_data:
                 QMessageBox.warning(
@@ -266,7 +271,53 @@ class TranscribePanel(QWidget):
                     "Install with: pip install openai-whisper",
                 )
                 return
-            self._start_python_whisper(audio, str(model_data), language, output_srt)
+            self._start_python_whisper(audio, str(model_data), language, output_srt, start_offset_s, start_index)
+
+    def _resolve_resume(self, audio: Path, output_srt: Path) -> tuple[float | None, int]:
+        """If a usable partial SRT exists at `output_srt`, ask the user
+        whether to resume from there, restart from scratch, or cancel the
+        operation entirely. Returns (offset_seconds, start_index) on go,
+        (None, 0) on cancel.
+        """
+        state = read_resume_state(output_srt)
+        if state is None:
+            return (0.0, 1)
+        last_end_s, next_index, cue_count = state
+
+        audio_duration = self._audio_duration(audio)
+        if audio_duration > 0 and last_end_s >= audio_duration - 1.0:
+            QMessageBox.information(
+                self, "Already transcribed",
+                f"This audio appears to be fully transcribed already:\n{output_srt}\n\n"
+                f"Last cue ends at {format_srt_timestamp(last_end_s)} "
+                f"(audio is {format_srt_timestamp(audio_duration)}).\n\n"
+                f"Delete the file if you want to re-run.",
+            )
+            return (None, 0)
+
+        msg = QMessageBox(self)
+        msg.setIcon(QMessageBox.Icon.Question)
+        msg.setWindowTitle("Resume transcription?")
+        msg.setText(
+            f"A partial SRT was found:\n{output_srt}\n\n"
+            f"{cue_count} cues already transcribed; last ends at "
+            f"{format_srt_timestamp(last_end_s)}."
+        )
+        resume_btn = msg.addButton("Resume", QMessageBox.ButtonRole.AcceptRole)
+        restart_btn = msg.addButton("Restart from scratch", QMessageBox.ButtonRole.DestructiveRole)
+        msg.addButton(QMessageBox.StandardButton.Cancel)
+        msg.exec()
+        clicked = msg.clickedButton()
+        if clicked is resume_btn:
+            return (last_end_s, next_index)
+        if clicked is restart_btn:
+            try:
+                output_srt.unlink()
+            except OSError as exc:
+                QMessageBox.warning(self, "Could not delete partial SRT", str(exc))
+                return (None, 0)
+            return (0.0, 1)
+        return (None, 0)
 
     def _prompt_missing_binary(self) -> None:
         box = QMessageBox(self)
@@ -298,7 +349,8 @@ class TranscribePanel(QWidget):
                 )
 
     def _start_whisper_cpp(
-        self, audio: Path, model: Path, language: str, output_srt: Path
+        self, audio: Path, model: Path, language: str, output_srt: Path,
+        start_offset_s: float = 0.0, start_index: int = 1,
     ) -> None:
         total = self._audio_duration(audio)
         worker = WhisperCppWorker(self)
@@ -307,16 +359,26 @@ class TranscribePanel(QWidget):
         binary_override = Path(binary_data) if binary_data else None
         if binary_override:
             settings.set_("transcribe/binary_path", str(binary_override))
-        worker.start(audio, model, language, output_srt, total, binary_override=binary_override)
+        worker.start(
+            audio, model, language, output_srt, total,
+            binary_override=binary_override,
+            start_offset_seconds=start_offset_s,
+            start_index=start_index,
+        )
         self._worker = worker
 
     def _start_python_whisper(
-        self, audio: Path, model_name: str, language: str, output_srt: Path
+        self, audio: Path, model_name: str, language: str, output_srt: Path,
+        start_offset_s: float = 0.0, start_index: int = 1,
     ) -> None:
         total = self._audio_duration(audio)
         worker = PythonWhisperWorker(self)
         self._wire_worker(worker, output_srt)
-        worker.start(audio, model_name, language, output_srt, total)
+        worker.start(
+            audio, model_name, language, output_srt, total,
+            start_offset_seconds=start_offset_s,
+            start_index=start_index,
+        )
         self._worker = worker
 
     def _wire_worker(self, worker, output_srt: Path) -> None:
