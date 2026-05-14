@@ -4,8 +4,6 @@ import logging
 from pathlib import Path
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QDesktopServices
-from PySide6.QtCore import QUrl
 from PySide6.QtWidgets import (
     QComboBox,
     QFileDialog,
@@ -217,16 +215,19 @@ class TranscribePanel(QWidget):
         box.setIcon(QMessageBox.Icon.Warning)
         box.setWindowTitle("whisper.cpp binary missing")
         box.setText(
-            "Could not find whisper.cpp main.exe.\n\n"
-            "Place it at tools/whisper.cpp/main.exe, or pick it manually."
+            "Could not find whisper.cpp.\n\n"
+            "Open the Setup wizard to download it automatically, "
+            "or pick an existing main.exe manually."
         )
-        download_btn = box.addButton("Open releases page", QMessageBox.ButtonRole.ActionRole)
+        setup_btn = box.addButton("Open Setup wizard…", QMessageBox.ButtonRole.AcceptRole)
         browse_btn = box.addButton("Browse for main.exe…", QMessageBox.ButtonRole.ActionRole)
         box.addButton(QMessageBox.StandardButton.Cancel)
         box.exec()
         clicked = box.clickedButton()
-        if clicked is download_btn:
-            QDesktopServices.openUrl(QUrl("https://github.com/ggerganov/whisper.cpp/releases"))
+        if clicked is setup_btn:
+            from rabbitscribe.widgets.setup_dialog import SetupDialog
+            SetupDialog(self).exec()
+            self._refresh_models()
         elif clicked is browse_btn:
             path, _ = QFileDialog.getOpenFileName(
                 self, "Locate whisper.cpp main.exe", "",

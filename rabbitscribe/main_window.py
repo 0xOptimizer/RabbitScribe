@@ -18,6 +18,7 @@ from rabbitscribe.widgets.chunks_panel import ChunksPanel
 from rabbitscribe.widgets.cleanup_panel import CleanupPanel
 from rabbitscribe.widgets.log_view import LogView
 from rabbitscribe.widgets.progress_strip import ProgressStrip
+from rabbitscribe.widgets.setup_dialog import SetupDialog
 from rabbitscribe.widgets.source_panel import SourcePanel
 from rabbitscribe.widgets.transcribe_panel import TranscribePanel
 
@@ -64,6 +65,10 @@ class MainWindow(QMainWindow):
 
     def _build_menus(self) -> None:
         file_menu = self.menuBar().addMenu("&File")
+        setup_action = QAction("&Setup wizard…", self)
+        setup_action.triggered.connect(self.open_setup_dialog)
+        file_menu.addAction(setup_action)
+        file_menu.addSeparator()
         quit_action = QAction("&Quit", self)
         quit_action.setShortcut(QKeySequence.StandardKey.Quit)
         quit_action.triggered.connect(self.close)
@@ -99,3 +104,7 @@ class MainWindow(QMainWindow):
     @property
     def progress(self) -> ProgressStrip:
         return self._progress
+
+    def open_setup_dialog(self) -> None:
+        dlg = SetupDialog(self)
+        dlg.exec()
