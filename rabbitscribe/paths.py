@@ -29,6 +29,9 @@ def find_ffprobe() -> Path | None:
 
 
 def find_whisper_cpp() -> Path | None:
+    # Newer whisper.cpp builds renamed `main.exe` to `whisper-cli.exe`;
+    # `main.exe` now ships as a deprecation stub that prints a warning
+    # and exits 1, so we must prefer `whisper-cli.exe` everywhere.
     try:
         from rabbitscribe import settings as _settings
         override = _settings.get("paths/whisper_cpp")
@@ -37,13 +40,16 @@ def find_whisper_cpp() -> Path | None:
     if override:
         p = Path(str(override))
         if p.is_file():
+            sibling = p.with_name("whisper-cli.exe")
+            if p.name.lower() == "main.exe" and sibling.is_file():
+                return sibling
             return p
 
-    for name in ("main.exe", "whisper.exe", "whisper-cli.exe"):
+    for name in ("whisper-cli.exe", "whisper.exe", "main.exe"):
         candidate = _bundled("tools", "whisper.cpp", name)
         if candidate.is_file():
             return candidate
-    for name in ("whisper-cli", "main"):
+    for name in ("whisper-cli", "whisper", "main"):
         found = shutil.which(name)
         if found:
             return Path(found)

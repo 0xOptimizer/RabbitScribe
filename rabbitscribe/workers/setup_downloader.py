@@ -153,7 +153,7 @@ def flatten_whisper_extract(dest_dir: Path) -> Path | None:
     """Some whisper.cpp zips nest the binaries inside a subfolder. Find the
     whisper binary anywhere under dest_dir and surface its path.
     """
-    for candidate_name in ("main.exe", "whisper-cli.exe", "whisper.exe"):
+    for candidate_name in ("whisper-cli.exe", "whisper.exe", "main.exe"):
         for found in dest_dir.rglob(candidate_name):
             if found.is_file():
                 # If nested, copy to dest_dir/main.exe and flatten neighbours.
