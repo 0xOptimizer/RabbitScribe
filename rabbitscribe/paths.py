@@ -63,6 +63,25 @@ def list_whisper_models() -> list[Path]:
     return sorted(models_dir.glob("ggml-*.bin"))
 
 
+def list_whisper_binaries() -> list[Path]:
+    """Every usable whisper.cpp binary under tools/whisper.cpp/.
+
+    Skips `main.exe` because in recent releases it is a deprecation stub
+    that prints a warning and exits with code 1.
+    """
+    root = _bundled("tools", "whisper.cpp")
+    if not root.is_dir():
+        return []
+    seen: set[Path] = set()
+    out: list[Path] = []
+    for name in ("whisper-cli.exe", "whisper.exe"):
+        for path in sorted(root.rglob(name)):
+            if path.is_file() and path not in seen:
+                seen.add(path)
+                out.append(path)
+    return out
+
+
 def default_output_root() -> Path:
     """Where every video's outputs live: <project_root>/output/."""
     return _project_root() / "output"

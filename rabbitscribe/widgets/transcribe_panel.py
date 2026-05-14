@@ -75,11 +75,17 @@ class TranscribePanel(QWidget):
         self._engine_combo = QComboBox()
         self._engine_combo.addItem("whisper.cpp (recommended)", ENGINE_WHISPER_CPP)
         self._engine_combo.addItem("openai-whisper (Python fallback)", ENGINE_PYTHON)
-        self._engine_combo.currentIndexChanged.connect(self._refresh_models)
 
         self._language_combo = QComboBox()
         for code, label in LANGUAGES:
             self._language_combo.addItem(f"{label} ({code})", code)
+
+        self._binary_combo = QComboBox()
+        self._binary_browse = QPushButton("Browse…")
+        self._binary_browse.clicked.connect(self._on_browse_binary)
+        binary_row = QHBoxLayout()
+        binary_row.addWidget(self._binary_combo, 1)
+        binary_row.addWidget(self._binary_browse)
 
         self._model_combo = QComboBox()
 
@@ -94,6 +100,8 @@ class TranscribePanel(QWidget):
         form = QFormLayout()
         form.addRow("Engine:", self._engine_combo)
         form.addRow("Language:", self._language_combo)
+        self._binary_label = QLabel("Binary:")
+        form.addRow(self._binary_label, binary_row)
         form.addRow("Model:", self._model_combo)
         form.addRow("Audio:", audio_row)
 
@@ -109,7 +117,10 @@ class TranscribePanel(QWidget):
         layout.addStretch(1)
 
         self._restore_settings()
+        self._refresh_binaries()
         self._refresh_models()
+        self._engine_combo.currentIndexChanged.connect(self._on_engine_changed)
+        self._on_engine_changed()
         self._project.mp3_changed.connect(self._on_mp3_changed)
 
         if self._project.mp3:
@@ -135,6 +146,48 @@ class TranscribePanel(QWidget):
         "medium", "medium.en",
         "large-v1", "large-v2", "large-v3", "large-v3-turbo",
     )
+
+    def _refresh_binaries(self) -> None:
+        current = settings.get("transcribe/binary_path")
+        self._binary_combo.clear()
+        binaries = paths.list_whisper_binaries()
+        root = paths._bundled("tools", "whisper.cpp")
+        for binary in binaries:
+            try:
+                rel = binary.relative_to(root)
+                label = str(rel)
+            except ValueError:
+                label = str(binary)
+            self._binary_combo.addItem(label, str(binary))
+        if self._binary_combo.count() == 0:
+            self._binary_combo.addItem("(no binary in tools/whisper.cpp/)", None)
+        if current:
+            idx = self._binary_combo.findData(str(current))
+            if idx >= 0:
+                self._binary_combo.setCurrentIndex(idx)
+
+    def _on_browse_binary(self) -> None:
+        from PySide6.QtWidgets import QFileDialog
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Pick whisper.cpp binary", "",
+            "Executables (whisper-cli.exe whisper.exe);;All files (*.*)",
+        )
+        if not path:
+            return
+        # Add to combo if not already present
+        idx = self._binary_combo.findData(path)
+        if idx < 0:
+            self._binary_combo.addItem(path, path)
+            idx = self._binary_combo.count() - 1
+        self._binary_combo.setCurrentIndex(idx)
+        settings.set_("transcribe/binary_path", path)
+
+    def _on_engine_changed(self) -> None:
+        is_cpp = self._engine_combo.currentData() == ENGINE_WHISPER_CPP
+        self._binary_label.setVisible(is_cpp)
+        self._binary_combo.setVisible(is_cpp)
+        self._binary_browse.setVisible(is_cpp)
+        self._refresh_models()
 
     def _refresh_models(self) -> None:
         engine = self._engine_combo.currentData()
@@ -250,7 +303,11 @@ class TranscribePanel(QWidget):
         total = self._audio_duration(audio)
         worker = WhisperCppWorker(self)
         self._wire_worker(worker, output_srt)
-        worker.start(audio, model, language, output_srt, total)
+        binary_data = self._binary_combo.currentData()
+        binary_override = Path(binary_data) if binary_data else None
+        if binary_override:
+            settings.set_("transcribe/binary_path", str(binary_override))
+        worker.start(audio, model, language, output_srt, total, binary_override=binary_override)
         self._worker = worker
 
     def _start_python_whisper(

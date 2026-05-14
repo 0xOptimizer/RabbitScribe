@@ -52,12 +52,12 @@ class WhisperCppWorker(QProcessWorker):
         language: str,
         output_srt: Path,
         total_duration_s: float,
+        binary_override: Path | None = None,
     ) -> None:
-        binary = find_whisper_cpp()
+        binary = binary_override if binary_override and binary_override.is_file() else find_whisper_cpp()
         if binary is None:
             self.error.emit(
-                "whisper.cpp binary not found. Place main.exe at tools/whisper.cpp/main.exe, "
-                "or pick it via the Browse dialog (no restart needed)."
+                "whisper.cpp binary not found. Open the Setup wizard or pick one with the Browse button."
             )
             return
         if not audio.is_file():
