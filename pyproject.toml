@@ -1,0 +1,27 @@
+[project]
+name = "rabbitscribe"
+version = "0.1.0"
+description = "PySide6 GUI for video -> SRT -> chunks pipeline (ffmpeg + whisper.cpp)"
+requires-python = ">=3.11"
+dependencies = [
+    "PySide6>=6.6",
+    "pysrt>=1.1.2",
+    "openai-whisper>=20231117",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "pytest-qt>=4"]
+
+[project.scripts]
+rabbitscribe = "rabbitscribe.__main__:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["rabbitscribe*"]
+exclude = ["tests*"]
+
+[tool.setuptools.package-data]
+rabbitscribe = ["resources/*.qss", "resources/presets/*.json"]

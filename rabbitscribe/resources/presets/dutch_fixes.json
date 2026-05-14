@@ -1,0 +1,18 @@
+{
+  "name": "Dutch proper-name fixes (Semovote)",
+  "language": "nl",
+  "substitutions": {
+    "semovo te": "Semovote",
+    "semovote":  "Semovote",
+    "semo vote": "Semovote",
+    "chain point": "Chainpoint",
+    "chainpoint":  "Chainpoint",
+    "semo":  "SEMO",
+    "bart":  "Bart",
+    "tim":   "Tim",
+    "irfan": "Irfan",
+    "lucas": "Lucas",
+    "johan": "Johan",
+    "meinert": "Meinert"
+  }
+}

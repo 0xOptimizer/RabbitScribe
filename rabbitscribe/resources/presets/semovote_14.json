@@ -1,0 +1,19 @@
+{
+  "name": "Semovote 14",
+  "chunks": [
+    {"label": "Introvideo + Irfan + Bart Q&A",        "start": "00:00:03", "end": "00:06:11"},
+    {"label": "Bart introductie persoonlijk verhaal", "start": "00:06:11", "end": "00:09:39"},
+    {"label": "Tim introductie + voorgerechtvraag",   "start": "00:09:39", "end": "00:11:49"},
+    {"label": "Tim Society 4.0 / systemen",           "start": "00:11:49", "end": "00:14:25"},
+    {"label": "Bart SEMO ecosysteem + Vote App",      "start": "00:14:27", "end": "00:18:09"},
+    {"label": "Tim waarom hij meedoet/investeert",    "start": "00:18:11", "end": "00:21:53"},
+    {"label": "Tim introductie Johan",                "start": "00:21:55", "end": "00:22:31"},
+    {"label": "Johan transparantie / Chainpoint",     "start": "00:22:31", "end": "00:29:01"},
+    {"label": "Tim brug naar hoofdgerecht",           "start": "00:29:01", "end": "00:30:23"},
+    {"label": "Bart database + Shopping App demo",    "start": "00:30:35", "end": "00:39:15"},
+    {"label": "Lucas financieel/commercieel",         "start": "00:39:21", "end": "00:51:11"},
+    {"label": "Irfan samenvatting investeringsaanbod","start": "00:51:11", "end": "00:52:19"},
+    {"label": "Vraag Meinert + antwoord",             "start": "00:52:21", "end": "00:55:49"},
+    {"label": "Bart uitnodiging Semovote investering","start": "00:55:49", "end": "00:56:33"}
+  ]
+}
