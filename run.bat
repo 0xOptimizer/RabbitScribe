@@ -42,8 +42,8 @@ if not exist ".venv\Scripts\python.exe" (
     echo Setup complete.
     echo.
 ) else (
-    REM ---------- venv exists; verify the key modules are actually importable ----------
-    .venv\Scripts\python.exe -c "import PySide6, pysrt, whisper, rabbitscribe" >nul 2>nul
+    REM ---------- venv exists; verify the key modules are present (no heavy imports) ----------
+    .venv\Scripts\python.exe -c "import importlib.util,sys; sys.exit(any(importlib.util.find_spec(m) is None for m in ('PySide6','pysrt','whisper','rabbitscribe')))" >nul 2>nul
     if errorlevel 1 (
         echo.
         echo One or more dependencies are missing or broken. Reinstalling...

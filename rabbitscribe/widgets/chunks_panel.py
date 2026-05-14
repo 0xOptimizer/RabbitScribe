@@ -112,6 +112,8 @@ class ChunksPanel(QWidget):
         layout.addLayout(opts_row)
 
         self._project.mp4_changed.connect(self._on_mp4_changed)
+        if self._project.mp4:
+            self._on_mp4_changed(self._project.mp4)
 
     def _on_mp4_changed(self, mp4: Path | None) -> None:
         if not mp4 or not mp4.is_file():

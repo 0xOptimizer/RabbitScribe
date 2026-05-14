@@ -126,6 +126,16 @@ class TranscribePanel(QWidget):
         if idx >= 0:
             self._language_combo.setCurrentIndex(idx)
 
+    # Hardcoded so we don't trigger `import whisper` (which drags in torch
+    # and costs several seconds at startup) just to populate the combo.
+    PYTHON_WHISPER_MODELS = (
+        "tiny", "tiny.en",
+        "base", "base.en",
+        "small", "small.en",
+        "medium", "medium.en",
+        "large-v1", "large-v2", "large-v3", "large-v3-turbo",
+    )
+
     def _refresh_models(self) -> None:
         engine = self._engine_combo.currentData()
         self._model_combo.clear()
@@ -135,13 +145,8 @@ class TranscribePanel(QWidget):
             if self._model_combo.count() == 0:
                 self._model_combo.addItem("(no models in tools/models/)", None)
         else:
-            try:
-                import whisper
-
-                for name in whisper.available_models():
-                    self._model_combo.addItem(name, name)
-            except ImportError:
-                self._model_combo.addItem("(openai-whisper not installed)", None)
+            for name in self.PYTHON_WHISPER_MODELS:
+                self._model_combo.addItem(name, name)
 
         last_model = settings.get("transcribe/model")
         if last_model:

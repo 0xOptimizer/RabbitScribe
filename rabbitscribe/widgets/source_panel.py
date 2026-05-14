@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QDragEnterEvent, QDropEvent
 from PySide6.QtWidgets import (
     QFileDialog,
@@ -91,7 +91,7 @@ class SourcePanel(QWidget):
 
         last_mp4 = settings.get("source/last_mp4")
         if last_mp4 and Path(str(last_mp4)).is_file():
-            self._load_mp4(Path(str(last_mp4)))
+            QTimer.singleShot(0, lambda: self._load_mp4(Path(str(last_mp4))))
 
     def dragEnterEvent(self, event: QDragEnterEvent) -> None:  # type: ignore[override]
         if event.mimeData().hasUrls():

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from typing import Callable
+
 from PySide6.QtCore import QByteArray, Qt, QTimer
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
@@ -9,18 +11,43 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QStatusBar,
     QTabWidget,
+    QVBoxLayout,
     QWidget,
 )
 
 from rabbitscribe import logging_setup, paths, settings
 from rabbitscribe.models.project import Project
-from rabbitscribe.widgets.chunks_panel import ChunksPanel
-from rabbitscribe.widgets.cleanup_panel import CleanupPanel
 from rabbitscribe.widgets.log_view import LogView
 from rabbitscribe.widgets.progress_strip import ProgressStrip
-from rabbitscribe.widgets.setup_dialog import SetupDialog
-from rabbitscribe.widgets.source_panel import SourcePanel
-from rabbitscribe.widgets.transcribe_panel import TranscribePanel
+
+
+class _LazyTab(QWidget):
+    """Container that builds its real panel on first show.
+
+    Defers the cost of constructing three of the four panels (and their
+    transitive imports) until the user actually clicks into the tab.
+    """
+
+    def __init__(
+        self,
+        factory: Callable[[QWidget], QWidget],
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self._factory = factory
+        self._inner: QWidget | None = None
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        self._layout = layout
+
+    def ensure_built(self) -> QWidget:
+        if self._inner is None:
+            self._inner = self._factory(self)
+            self._layout.addWidget(self._inner)
+        return self._inner
+
+    def inner(self) -> QWidget | None:
+        return self._inner
 
 
 class MainWindow(QMainWindow):
@@ -38,13 +65,13 @@ class MainWindow(QMainWindow):
         bridge.record_emitted.connect(self._log_view.append_line)
 
         self._tabs = QTabWidget(self)
-        self._tabs.addTab(SourcePanel(self._project, self._progress, self), "Source")
-        self._tabs.addTab(
-            TranscribePanel(self._project, self._progress, self), "Transcribe"
-        )
-        self._tabs.addTab(CleanupPanel(self._project, self._progress, self), "Cleanup")
-        self._tabs.addTab(ChunksPanel(self._project, self._progress, self), "Chunks")
+        self._tabs.addTab(_LazyTab(self._make_source_panel, self), "Source")
+        self._tabs.addTab(_LazyTab(self._make_transcribe_panel, self), "Transcribe")
+        self._tabs.addTab(_LazyTab(self._make_cleanup_panel, self), "Cleanup")
+        self._tabs.addTab(_LazyTab(self._make_chunks_panel, self), "Chunks")
+        self._tabs.currentChanged.connect(self._on_tab_changed)
         self.setCentralWidget(self._tabs)
+        self._on_tab_changed(0)  # build the initial tab synchronously
 
         self._log_dock = QDockWidget("Log", self)
         self._log_dock.setObjectName("LogDock")
@@ -107,7 +134,29 @@ class MainWindow(QMainWindow):
     def progress(self) -> ProgressStrip:
         return self._progress
 
+    def _on_tab_changed(self, index: int) -> None:
+        widget = self._tabs.widget(index)
+        if isinstance(widget, _LazyTab):
+            widget.ensure_built()
+
+    def _make_source_panel(self, parent: QWidget) -> QWidget:
+        from rabbitscribe.widgets.source_panel import SourcePanel
+        return SourcePanel(self._project, self._progress, parent)
+
+    def _make_transcribe_panel(self, parent: QWidget) -> QWidget:
+        from rabbitscribe.widgets.transcribe_panel import TranscribePanel
+        return TranscribePanel(self._project, self._progress, parent)
+
+    def _make_cleanup_panel(self, parent: QWidget) -> QWidget:
+        from rabbitscribe.widgets.cleanup_panel import CleanupPanel
+        return CleanupPanel(self._project, self._progress, parent)
+
+    def _make_chunks_panel(self, parent: QWidget) -> QWidget:
+        from rabbitscribe.widgets.chunks_panel import ChunksPanel
+        return ChunksPanel(self._project, self._progress, parent)
+
     def open_setup_dialog(self, *, first_run: bool = False) -> None:
+        from rabbitscribe.widgets.setup_dialog import SetupDialog
         dlg = SetupDialog(self, first_run=first_run)
         dlg.exec()
 
