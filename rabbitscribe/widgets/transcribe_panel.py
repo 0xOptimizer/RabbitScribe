@@ -235,7 +235,7 @@ class TranscribePanel(QWidget):
             if path:
                 settings.set_("paths/whisper_cpp", path)
                 QMessageBox.information(
-                    self, "Saved", f"Saved path. Restart RabbitScribe.\n{path}",
+                    self, "Saved", f"Saved. Try Transcribe again.\n{path}",
                 )
 
     def _start_whisper_cpp(
@@ -250,16 +250,10 @@ class TranscribePanel(QWidget):
     def _start_python_whisper(
         self, audio: Path, model_name: str, language: str, output_srt: Path
     ) -> None:
-        lang_arg = language if language != "auto" else None
-        worker = PythonWhisperWorker(
-            audio=audio,
-            output_srt=output_srt,
-            language=lang_arg or "en",
-            model_name=model_name,
-            parent=self,
-        )
+        total = self._audio_duration(audio)
+        worker = PythonWhisperWorker(self)
         self._wire_worker(worker, output_srt)
-        worker.start()
+        worker.start(audio, model_name, language, output_srt, total)
         self._worker = worker
 
     def _wire_worker(self, worker, output_srt: Path) -> None:

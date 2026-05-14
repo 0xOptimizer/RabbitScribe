@@ -29,6 +29,16 @@ def find_ffprobe() -> Path | None:
 
 
 def find_whisper_cpp() -> Path | None:
+    try:
+        from rabbitscribe import settings as _settings
+        override = _settings.get("paths/whisper_cpp")
+    except Exception:
+        override = None
+    if override:
+        p = Path(str(override))
+        if p.is_file():
+            return p
+
     for name in ("main.exe", "whisper.exe", "whisper-cli.exe"):
         candidate = _bundled("tools", "whisper.cpp", name)
         if candidate.is_file():

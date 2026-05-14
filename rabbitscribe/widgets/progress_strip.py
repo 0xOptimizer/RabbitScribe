@@ -47,3 +47,7 @@ class ProgressStrip(QWidget):
         self._cancel.setEnabled(busy)
         if not busy:
             self._bar.setValue(0)
+            try:
+                self.cancel_requested.disconnect()
+            except (TypeError, RuntimeError):
+                pass
