@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QByteArray, Qt
+from PySide6.QtCore import QByteArray, Qt, QTimer
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
     QDockWidget,
@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from rabbitscribe import logging_setup, settings
+from rabbitscribe import logging_setup, paths, settings
 from rabbitscribe.models.project import Project
 from rabbitscribe.widgets.chunks_panel import ChunksPanel
 from rabbitscribe.widgets.cleanup_panel import CleanupPanel
@@ -63,6 +63,8 @@ class MainWindow(QMainWindow):
         self._restore_geometry()
         self.setAcceptDrops(True)
 
+        QTimer.singleShot(0, self._maybe_first_run_setup)
+
     def _build_menus(self) -> None:
         file_menu = self.menuBar().addMenu("&File")
         setup_action = QAction("&Setup wizard…", self)
@@ -105,6 +107,15 @@ class MainWindow(QMainWindow):
     def progress(self) -> ProgressStrip:
         return self._progress
 
-    def open_setup_dialog(self) -> None:
-        dlg = SetupDialog(self)
+    def open_setup_dialog(self, *, first_run: bool = False) -> None:
+        dlg = SetupDialog(self, first_run=first_run)
         dlg.exec()
+
+    def _maybe_first_run_setup(self) -> None:
+        if settings.get("setup/first_run_done"):
+            return
+        if paths.find_whisper_cpp() is not None and paths.list_whisper_models():
+            settings.set_("setup/first_run_done", True)
+            return
+        self.open_setup_dialog(first_run=True)
+        settings.set_("setup/first_run_done", True)

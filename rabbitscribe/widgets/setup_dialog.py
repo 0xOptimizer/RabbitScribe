@@ -78,7 +78,7 @@ class _DownloadRow(QWidget):
 class SetupDialog(QDialog):
     """One-stop wizard for fetching whisper.cpp + a model into tools/."""
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(self, parent: QWidget | None = None, *, first_run: bool = False) -> None:
         super().__init__(parent)
         self.setWindowTitle("RabbitScribe setup")
         self.setMinimumWidth(680)
@@ -89,11 +89,21 @@ class SetupDialog(QDialog):
         self._zip_target: Path | None = None
 
         layout = QVBoxLayout(self)
+        if first_run:
+            intro = QLabel(
+                "Welcome to RabbitScribe.\n\n"
+                "To transcribe video, the app needs the whisper.cpp engine and a model file. "
+                "You can download both here, or skip this and configure later via File -> Setup wizard. "
+                "The Source, Cleanup, and Chunks tabs work without these."
+            )
+            intro.setWordWrap(True)
+            intro.setStyleSheet("padding: 8px; background: #eef4fb; border: 1px solid #c5d6e6;")
+            layout.addWidget(intro)
         layout.addWidget(self._build_binary_box())
         layout.addWidget(self._build_model_box())
         bottom = QHBoxLayout()
         bottom.addStretch(1)
-        close_btn = QPushButton("Close")
+        close_btn = QPushButton("Close" if not first_run else "Skip for now")
         close_btn.clicked.connect(self.accept)
         bottom.addWidget(close_btn)
         layout.addLayout(bottom)
