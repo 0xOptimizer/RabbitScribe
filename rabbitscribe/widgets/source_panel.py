@@ -80,6 +80,18 @@ class SourcePanel(QWidget):
         info_box = QGroupBox("Media metadata")
         info_box.setLayout(info_form)
 
+        self._srt_edit = QLineEdit()
+        self._srt_edit.setReadOnly(True)
+        self._srt_edit.setPlaceholderText("(optional — drag .srt onto window or click Browse)")
+        self._srt_browse = QPushButton("Browse…")
+        self._srt_browse.clicked.connect(self._on_browse_srt)
+        self._srt_clear = QPushButton("Clear")
+        self._srt_clear.clicked.connect(self._on_clear_srt)
+        srt_row = QHBoxLayout()
+        srt_row.addWidget(self._srt_edit, 1)
+        srt_row.addWidget(self._srt_browse)
+        srt_row.addWidget(self._srt_clear)
+
         self._out_edit = QLineEdit()
         self._out_edit.setText(str(paths.default_output_root()))
         self._out_edit.setPlaceholderText(str(paths.default_output_root()))
@@ -97,6 +109,8 @@ class SourcePanel(QWidget):
         layout.addWidget(QLabel("Source MP4:"))
         layout.addLayout(mp4_row)
         layout.addWidget(info_box)
+        layout.addWidget(QLabel("Subtitles (optional, .srt):"))
+        layout.addLayout(srt_row)
         layout.addWidget(QLabel("Output directory:"))
         layout.addLayout(out_row)
         layout.addWidget(self._extract_button)
@@ -107,23 +121,37 @@ class SourcePanel(QWidget):
         last_mp4 = settings.get("source/last_mp4")
         if last_mp4 and Path(str(last_mp4)).is_file():
             QTimer.singleShot(0, lambda: self._load_mp4(Path(str(last_mp4))))
+        last_srt = settings.get("source/last_srt")
+        if last_srt and Path(str(last_srt)).is_file():
+            QTimer.singleShot(0, lambda: self._load_srt(Path(str(last_srt))))
+
+    _VIDEO_EXTS = (".mp4", ".mkv", ".mov", ".webm")
+    _SRT_EXTS = (".srt",)
 
     def dragEnterEvent(self, event: QDragEnterEvent) -> None:  # type: ignore[override]
         if event.mimeData().hasUrls():
             for url in event.mimeData().urls():
-                if url.toLocalFile().lower().endswith((".mp4", ".mkv", ".mov", ".webm")):
+                name = url.toLocalFile().lower()
+                if name.endswith(self._VIDEO_EXTS) or name.endswith(self._SRT_EXTS):
                     event.acceptProposedAction()
                     return
         event.ignore()
 
     def dropEvent(self, event: QDropEvent) -> None:  # type: ignore[override]
+        handled = False
         for url in event.mimeData().urls():
             local = url.toLocalFile()
-            if local.lower().endswith((".mp4", ".mkv", ".mov", ".webm")):
+            low = local.lower()
+            if low.endswith(self._VIDEO_EXTS):
                 self._load_mp4(Path(local))
-                event.acceptProposedAction()
-                return
-        event.ignore()
+                handled = True
+            elif low.endswith(self._SRT_EXTS):
+                self._load_srt(Path(local))
+                handled = True
+        if handled:
+            event.acceptProposedAction()
+        else:
+            event.ignore()
 
     def _on_download_url(self) -> None:
         last_url = settings.get("source/last_url", "")
@@ -207,6 +235,27 @@ class SourcePanel(QWidget):
         )
         if path:
             self._load_mp4(Path(path))
+
+    def _on_browse_srt(self) -> None:
+        last = settings.get("source/last_srt")
+        start_dir = str(Path(str(last)).parent) if last else ""
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Pick subtitle file",
+            start_dir,
+            "SubRip (*.srt);;All files (*.*)",
+        )
+        if path:
+            self._load_srt(Path(path))
+
+    def _on_clear_srt(self) -> None:
+        self._srt_edit.setText("")
+        self._project.set_raw_srt(None)
+        settings.set_("source/last_srt", "")
+
+    def _load_srt(self, srt: Path) -> None:
+        self._srt_edit.setText(str(srt))
+        self._project.set_raw_srt(srt)
+        settings.set_("source/last_srt", str(srt))
 
     def _on_browse_out(self) -> None:
         start_dir = self._out_edit.text() or ""

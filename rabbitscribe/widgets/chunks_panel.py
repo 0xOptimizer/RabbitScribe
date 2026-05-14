@@ -27,6 +27,7 @@ from rabbitscribe.models.project import Project
 from rabbitscribe.widgets.progress_strip import ProgressStrip
 from rabbitscribe.workers import ffprobe
 from rabbitscribe.workers.chunk_split import ChunkSplitter
+from rabbitscribe.workers.srt_split import split_srt_by_chunks
 
 
 log = logging.getLogger(__name__)
@@ -95,6 +96,17 @@ class ChunksPanel(QWidget):
             "Frame-accurate re-encodes the video at CRF 18 - quality degrading."
         )
 
+        self._split_srt = QCheckBox("Also split SRT per chunk")
+        self._split_srt.setToolTip(
+            "After video chunks are written, slice the loaded SRT to match each chunk. "
+            "Cues are clamped to the chunk range and re-zeroed to start at 00:00:00."
+        )
+        self._srt_path_edit = QLineEdit()
+        self._srt_path_edit.setReadOnly(True)
+        self._srt_path_edit.setPlaceholderText("(no SRT loaded)")
+        self._srt_browse = QPushButton("SRT…")
+        self._srt_browse.clicked.connect(self._on_pick_srt)
+
         self._split_btn = QPushButton("Split All")
         self._split_btn.clicked.connect(self._on_split_all)
 
@@ -102,18 +114,29 @@ class ChunksPanel(QWidget):
         opts_row.addWidget(self._skip_existing)
         opts_row.addWidget(self._overwrite)
         opts_row.addWidget(self._frame_accurate)
+        opts_row.addWidget(self._split_srt)
         opts_row.addStretch(1)
         opts_row.addWidget(self._split_btn)
+
+        srt_row = QHBoxLayout()
+        srt_row.addWidget(QLabel("SRT to split:"))
+        srt_row.addWidget(self._srt_path_edit, 1)
+        srt_row.addWidget(self._srt_browse)
+        self._srt_picked: Path | None = None
 
         layout = QVBoxLayout(self)
         layout.addWidget(QLabel("Chunks (timecodes as HH:MM:SS):"))
         layout.addWidget(self._table, 1)
         layout.addLayout(btn_row)
         layout.addLayout(opts_row)
+        layout.addLayout(srt_row)
 
         self._project.mp4_changed.connect(self._on_mp4_changed)
+        self._project.cleaned_srt_changed.connect(lambda _p: self._refresh_srt_path())
+        self._project.raw_srt_changed.connect(lambda _p: self._refresh_srt_path())
         if self._project.mp4:
             self._on_mp4_changed(self._project.mp4)
+        self._refresh_srt_path()
 
     def _on_mp4_changed(self, mp4: Path | None) -> None:
         if not mp4 or not mp4.is_file():
@@ -239,11 +262,72 @@ class ChunksPanel(QWidget):
             frame_accurate=self._frame_accurate.isChecked(),
         )
 
+    def _refresh_srt_path(self) -> None:
+        if self._srt_picked is not None:
+            self._srt_path_edit.setText(str(self._srt_picked))
+            return
+        candidate = self._project.cleaned_srt or self._project.raw_srt
+        self._srt_path_edit.setText(str(candidate) if candidate else "")
+
+    def _on_pick_srt(self) -> None:
+        from PySide6.QtWidgets import QFileDialog
+        start_dir = ""
+        if self._project.output_dir and self._project.output_dir.is_dir():
+            start_dir = str(self._project.output_dir)
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Pick SRT to split", start_dir, "SubRip (*.srt);;All files (*.*)"
+        )
+        if not path:
+            return
+        self._srt_picked = Path(path)
+        self._refresh_srt_path()
+        self._split_srt.setChecked(True)
+
+    def _effective_srt(self) -> Path | None:
+        if self._srt_picked is not None and self._srt_picked.is_file():
+            return self._srt_picked
+        text = self._srt_path_edit.text().strip()
+        if text:
+            p = Path(text)
+            if p.is_file():
+                return p
+        return None
+
     def _on_split_finished(self, outputs: list) -> None:
         self._progress.set_status(f"Split complete: {len(outputs)} chunks")
         self._progress.set_busy(False)
         self._split_btn.setEnabled(True)
         log.info("Split complete: %d output files", len(outputs))
+
+        if self._split_srt.isChecked():
+            self._run_srt_split()
+
+    def _run_srt_split(self) -> None:
+        srt = self._effective_srt()
+        if srt is None:
+            QMessageBox.information(
+                self, "No SRT to split",
+                "Tick a cleaned/raw SRT via the SRT picker, or run Cleanup first.",
+            )
+            return
+        if not self._project.output_dir:
+            return
+        out_dir = self._project.output_dir / "chunks"
+        try:
+            written = split_srt_by_chunks(
+                srt,
+                self._model.chunks(),
+                out_dir,
+                overwrite=not self._skip_existing.isChecked() or self._overwrite.isChecked(),
+            )
+        except (FileNotFoundError, OSError) as exc:
+            QMessageBox.warning(self, "SRT split failed", str(exc))
+            log.error("SRT split failed: %s", exc)
+            return
+        self._progress.set_status(
+            f"Wrote {len(written)} per-chunk SRT file(s) alongside the video chunks."
+        )
+        log.info("SRT split wrote %d files", len(written))
 
     def _on_split_error(self, message: str) -> None:
         self._progress.set_status(f"Split failed: {message}")
