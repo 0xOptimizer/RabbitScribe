@@ -131,6 +131,69 @@ def test_missing_srt_raises(tmp_path: Path):
         raise AssertionError("expected FileNotFoundError")
 
 
+def test_actual_starts_compensates_for_keyframe_snap(tmp_path: Path):
+    """User asked for chunk at [10, 20], but ffmpeg snapped the start to
+    a keyframe at 8.5. Without correction, a source cue at 12 lands at
+    chunk-time 2.0 (wrong — should be at 3.5 because the chunk's content
+    starts at 8.5 in source time).
+    """
+    srt = tmp_path / "src.srt"
+    _write_srt(srt, [(12_000, 14_000, "speech")])
+    chunks = [Chunk(label="part1", start="00:00:10", end="00:00:20")]
+    written = split_srt_by_chunks(
+        srt, chunks, tmp_path / "out",
+        actual_starts=[8.5],
+    )
+    parts = pysrt.open(str(written[0]), encoding="utf-8")
+    # Cue [12, 14] re-zeroed against actual start 8.5 -> [3500, 5500]
+    assert parts[0].start.ordinal == 3500
+    assert parts[0].end.ordinal == 5500
+
+
+def test_actual_starts_clamps_negative_to_zero(tmp_path: Path):
+    srt = tmp_path / "src.srt"
+    _write_srt(srt, [(5_000, 8_000, "hi")])
+    chunks = [Chunk(label="part1", start="00:00:10", end="00:00:20")]
+    written = split_srt_by_chunks(
+        srt, chunks, tmp_path / "out",
+        actual_starts=[-3.0],
+    )
+    parts = pysrt.open(str(written[0]), encoding="utf-8")
+    # Negative actual start clamped to 0; cue [5, 8] -> [5000, 8000]
+    assert parts[0].start.ordinal == 5000
+    assert parts[0].end.ordinal == 8000
+
+
+def test_actual_starts_capped_at_user_start(tmp_path: Path):
+    """Actual start can't be LATER than user-typed start (would imply
+    ffmpeg snapped FORWARD, which never happens with -c copy). If passed
+    a bogus value > user_start, function falls back to user_start.
+    """
+    srt = tmp_path / "src.srt"
+    _write_srt(srt, [(12_000, 14_000, "x")])
+    chunks = [Chunk(label="part1", start="00:00:10", end="00:00:20")]
+    written = split_srt_by_chunks(
+        srt, chunks, tmp_path / "out",
+        actual_starts=[15.0],  # nonsensical, later than user_start
+    )
+    parts = pysrt.open(str(written[0]), encoding="utf-8")
+    # Falls back to user_start=10: cue [12, 14] -> [2000, 4000]
+    assert parts[0].start.ordinal == 2000
+    assert parts[0].end.ordinal == 4000
+
+
+def test_actual_starts_length_must_match(tmp_path: Path):
+    srt = tmp_path / "src.srt"
+    _write_srt(srt, [(0, 1_000, "x")])
+    chunks = [Chunk(label="a", start="00:00:00", end="00:00:05")]
+    try:
+        split_srt_by_chunks(srt, chunks, tmp_path / "out", actual_starts=[0.0, 1.0])
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("expected ValueError for mismatched lengths")
+
+
 def test_overwrite_false_preserves_existing(tmp_path: Path):
     srt = tmp_path / "src.srt"
     _write_srt(srt, [(0, 1_000, "x")])

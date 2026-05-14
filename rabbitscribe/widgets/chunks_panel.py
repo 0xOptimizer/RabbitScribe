@@ -22,11 +22,11 @@ from PySide6.QtWidgets import (
 )
 
 from rabbitscribe import paths, settings
-from rabbitscribe.models.chunks import Chunk, ChunksTableModel
+from rabbitscribe.models.chunks import Chunk, ChunksTableModel, parse_timecode
 from rabbitscribe.models.project import Project
 from rabbitscribe.widgets.progress_strip import ProgressStrip
 from rabbitscribe.workers import ffprobe
-from rabbitscribe.workers.chunk_split import ChunkSplitter
+from rabbitscribe.workers.chunk_split import ChunkSplitter, chunk_filename
 from rabbitscribe.workers.srt_split import split_srt_by_chunks
 
 
@@ -313,12 +313,17 @@ class ChunksPanel(QWidget):
         if not self._project.output_dir:
             return
         out_dir = self._project.output_dir / "chunks"
+        chunks = self._model.chunks()
+        actual_starts = self._compute_actual_starts(chunks, out_dir)
         try:
             written = split_srt_by_chunks(
                 srt,
-                self._model.chunks(),
+                chunks,
                 out_dir,
-                overwrite=not self._skip_existing.isChecked() or self._overwrite.isChecked(),
+                # SRT split is essentially free; always rewrite so corrected
+                # timing replaces any stale per-chunk SRT from a prior run.
+                overwrite=True,
+                actual_starts=actual_starts,
             )
         except (FileNotFoundError, OSError) as exc:
             QMessageBox.warning(self, "SRT split failed", str(exc))
@@ -328,6 +333,34 @@ class ChunksPanel(QWidget):
             f"Wrote {len(written)} per-chunk SRT file(s) alongside the video chunks."
         )
         log.info("SRT split wrote %d files", len(written))
+
+    def _compute_actual_starts(self, chunks: list[Chunk], out_dir: Path) -> list[float]:
+        """For each chunk, probe the produced MP4 to find its true start
+        time in the source. With stream-copy (`-c copy`), ffmpeg snaps cuts
+        backward to the nearest keyframe, so the MP4's duration is usually
+        a bit longer than `end - user_start`. The true start in the source
+        is `user_end - actual_duration`.
+
+        Falls back to the user-typed start for chunks whose MP4 isn't on
+        disk or doesn't probe cleanly.
+        """
+        total = len(chunks)
+        starts: list[float] = []
+        for i, chunk in enumerate(chunks, start=1):
+            user_start = parse_timecode(chunk.start) or 0
+            user_end = parse_timecode(chunk.end) or 0
+            chunk_path = out_dir / chunk_filename(i, chunk.label, total)
+            if user_end > 0 and chunk_path.is_file():
+                try:
+                    info = ffprobe.probe(chunk_path)
+                    if info.duration_seconds > 0:
+                        # actual_start = user_end - actual_duration
+                        starts.append(max(0.0, user_end - info.duration_seconds))
+                        continue
+                except ffprobe.FfprobeError as exc:
+                    log.warning("Could not ffprobe %s for SRT alignment: %s", chunk_path, exc)
+            starts.append(float(user_start))
+        return starts
 
     def _on_split_error(self, message: str) -> None:
         self._progress.set_status(f"Split failed: {message}")

@@ -161,6 +161,17 @@ class ChunkSplitter(QObject):
 
     def _on_proc_finished(self, exit_code: int, exit_status: QProcess.ExitStatus) -> None:
         if self._cancelled:
+            # ffmpeg was killed mid-write; the partial MP4 it was producing
+            # is almost certainly broken. Delete so a re-run with Skip
+            # existing on doesn't mistake it for a finished chunk.
+            if self._out_dir is not None and 0 <= self._i < len(self._chunks):
+                partial = self._out_dir / chunk_filename(
+                    self._i + 1, self._chunks[self._i].label, len(self._chunks)
+                )
+                try:
+                    partial.unlink(missing_ok=True)
+                except OSError as exc:
+                    log.warning("Could not delete partial chunk %s: %s", partial, exc)
             self.error.emit("Cancelled")
             return
         if exit_code != 0:

@@ -175,9 +175,24 @@ class CleanupPanel(QWidget):
         layout.addLayout(action_row)
 
         self._restore_rules()
+        self._wire_rule_persistence()
         self._project.raw_srt_changed.connect(self._on_raw_srt_changed)
         if self._project.raw_srt:
             self._load_srt(self._project.raw_srt)
+
+    def _wire_rule_persistence(self) -> None:
+        """Persist every rule change immediately so tweaks survive a
+        close-without-cleaning. Without this, only `Clean and save`
+        triggers `_persist_rules`.
+        """
+        self._min_dur.valueChanged.connect(lambda _v: self._persist_rules())
+        self._max_dur.valueChanged.connect(lambda _v: self._persist_rules())
+        self._max_chars.valueChanged.connect(lambda _v: self._persist_rules())
+        self._strip_ellipsis.toggled.connect(lambda _v: self._persist_rules())
+        self._mark_unclear.toggled.connect(lambda _v: self._persist_rules())
+        self._unclear_token.editingFinished.connect(self._persist_rules)
+        self._capitalise.toggled.connect(lambda _v: self._persist_rules())
+        self._subs_table.itemChanged.connect(lambda _i: self._persist_rules())
 
     # ---------- scroll sync ----------
 

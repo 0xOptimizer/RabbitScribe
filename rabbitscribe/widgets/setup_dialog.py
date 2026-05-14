@@ -18,6 +18,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+import shutil
+
 from rabbitscribe import paths
 from rabbitscribe.workers.setup_downloader import (
     HUGGINGFACE_MODEL_BASE,
@@ -191,6 +193,22 @@ class SetupDialog(QDialog):
         url = asset["url"]
         target_dir = whisper_cpp_dir()
         target_dir.mkdir(parents=True, exist_ok=True)
+
+        # Existing install? Confirm + wipe stale binaries/DLLs/extract subdirs
+        # so a CPU re-install doesn't inherit cuBLAS .dll leftovers, etc.
+        stale_files = [p for p in target_dir.iterdir() if p.suffix.lower() in (".exe", ".dll", ".pdb")] \
+            + [p for p in target_dir.iterdir() if p.is_dir()]
+        if stale_files:
+            ret = QMessageBox.question(
+                self, "Replace existing install?",
+                f"Found {len(stale_files)} existing file(s)/folder(s) in:\n{target_dir}\n\n"
+                f"Replacing is recommended (mixed builds can crash with "
+                f"STATUS_DLL_NOT_FOUND). Proceed?",
+            )
+            if ret != QMessageBox.StandardButton.Yes:
+                return
+            self._wipe_install(target_dir)
+
         zip_target = target_dir / asset["name"]
         self._zip_target = zip_target
 
@@ -206,6 +224,20 @@ class SetupDialog(QDialog):
         self._binary_row.set_busy(True)
         self._binary_row.cancel_button().clicked.connect(dl.cancel)
         dl.start()
+
+    def _wipe_install(self, target_dir: Path) -> None:
+        """Delete .exe/.dll/.pdb files and any subdirectories under
+        target_dir. Used before a fresh download to prevent mixed-build
+        contamination.
+        """
+        for entry in list(target_dir.iterdir()):
+            try:
+                if entry.is_file() and entry.suffix.lower() in (".exe", ".dll", ".pdb"):
+                    entry.unlink()
+                elif entry.is_dir():
+                    shutil.rmtree(entry, ignore_errors=True)
+            except OSError as exc:
+                log.warning("Could not remove %s during wipe: %s", entry, exc)
 
     def _on_binary_zip_done(self, zip_path_str: str) -> None:
         zip_path = Path(zip_path_str)

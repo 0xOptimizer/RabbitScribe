@@ -26,8 +26,17 @@ def split_srt_by_chunks(
     out_dir: Path,
     *,
     overwrite: bool = True,
+    actual_starts: list[float] | None = None,
 ) -> list[Path]:
     """Write one SRT per chunk into `out_dir`.
+
+    `actual_starts`, if provided, must be one float per chunk giving the
+    chunk's TRUE start time in the source (in seconds). This matters when
+    ffmpeg's `-c copy` snapped the cut backwards to the nearest keyframe:
+    the resulting MP4 has a few extra seconds of content at the beginning,
+    so SRT cues must be re-zeroed against that real start rather than the
+    user-typed start. If `actual_starts` is None, the user-typed start is
+    used (correct for frame-accurate / re-encoded splits).
 
     Returns the list of written paths. A chunk with no overlapping cues
     produces no file. Files are named `<NN>_<slug>.srt` to mirror the
@@ -35,6 +44,10 @@ def split_srt_by_chunks(
     """
     if not srt_path.is_file():
         raise FileNotFoundError(f"SRT does not exist: {srt_path}")
+    if actual_starts is not None and len(actual_starts) != len(chunks):
+        raise ValueError(
+            f"actual_starts has {len(actual_starts)} entries but chunks has {len(chunks)}"
+        )
     subs = pysrt.open(str(srt_path), encoding="utf-8")
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -42,13 +55,22 @@ def split_srt_by_chunks(
     written: list[Path] = []
 
     for i, chunk in enumerate(chunks, start=1):
-        chunk_start = parse_timecode(chunk.start)
+        user_start = parse_timecode(chunk.start)
         chunk_end = parse_timecode(chunk.end)
-        if chunk_start is None or chunk_end is None or chunk_end <= chunk_start:
+        if user_start is None or chunk_end is None or chunk_end <= user_start:
             log.warning("Skipping chunk %d with invalid range: %s..%s", i, chunk.start, chunk.end)
             continue
 
-        chunk_start_ms = chunk_start * 1000
+        # Re-zero against the chunk's TRUE start (keyframe-snapped or
+        # frame-accurate user start), not the user-typed start.
+        chunk_start = actual_starts[i - 1] if actual_starts is not None else float(user_start)
+        if chunk_start < 0:
+            chunk_start = 0.0
+        # Sanity: a snapped start can't be later than what the user asked for
+        if chunk_start > user_start:
+            chunk_start = float(user_start)
+
+        chunk_start_ms = int(round(chunk_start * 1000))
         chunk_end_ms = chunk_end * 1000
         out_subs = SubRipFile()
         next_index = 1
